@@ -1149,8 +1149,7 @@ fi
 # check for usb.h when a driver will require it
 build_usb=no
 if test $build_vsllink = yes -o $build_usbprog = yes -o \
-  $build_rlink = yes -o $build_ulink = yes -o $build_armjtagew = yes -o \
-  $build_cmsisdap = yes
+  $build_rlink = yes -o $build_ulink = yes -o $build_armjtagew = yes
 then
   build_usb=yes
 fi
@@ -1158,7 +1157,7 @@ fi
 # Check for libusb1 ported drivers.
 build_usb_ng=no
 if test $build_jlink = yes -o $build_hladapter_stlink = yes -o $build_osbdm = yes -o \
-  $build_opendous = yes -o $build_ftdi = yes -o $build_hladapter_icdi = yes \
+  $build_opendous = yes -o $build_ftdi = yes -o $build_hladapter_icdi = yes -o \
   $build_cmsisdap = yes
 then
   build_usb_ng=yes
