@@ -38,6 +38,13 @@
 static inline int jtag_libusb_claim_interface(jtag_libusb_device_handle *devh,
 		int iface)
 {
+	if( libusb_kernel_driver_active( devh, 0) )
+	{
+		LOG_INFO("kernel driver active");
+		if( libusb_detach_kernel_driver(devh, 0) == 0 )
+			LOG_INFO( "kernel driver now detached.");
+	}
+
 	return libusb_claim_interface(devh, iface);
 };
 

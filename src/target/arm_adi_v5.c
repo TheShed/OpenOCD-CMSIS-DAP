@@ -559,6 +559,8 @@ int mem_ap_read_buf_u32(struct adiv5_dap *dap, uint8_t *buffer,
 	count >>= 2;
 	wcount = count;
 
+	LOG_INFO("mem_ap_read_buf_u32 - JTAG!! " );
+
 	while (wcount > 0) {
 		/* Adjust to read blocks within boundaries aligned to the
 		 * TAR autoincrement size (at least 2^10).  Autoincrement

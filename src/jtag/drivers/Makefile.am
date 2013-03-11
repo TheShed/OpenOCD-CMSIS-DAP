@@ -102,6 +102,9 @@ if HLADAPTER
 DRIVERFILES += stlink_usb.c
 DRIVERFILES += ti_icdi_usb.c
 endif
+if CMSIS_DAP
+DRIVERFILES += cmsis_dap.c
+endif
 if OSBDM
 DRIVERFILES += osbdm.c
 endif

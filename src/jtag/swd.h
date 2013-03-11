@@ -131,9 +131,10 @@ struct swd_driver {
 	int *(*trace)(bool swo);
 };
 
-int swd_init_reset(struct command_context *cmd_ctx);
-void swd_add_reset(int req_srst);
+extern int swd_init_reset(struct command_context *cmd_ctx);
+extern void swd_add_reset(int req_srst);
 
-bool transport_is_swd(void);
+extern bool transport_is_swd(void);
+extern bool transport_is_cmsis_dap(void);
 
 #endif /* SWD_H */

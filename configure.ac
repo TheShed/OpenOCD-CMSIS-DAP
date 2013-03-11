@@ -483,6 +483,10 @@ AC_ARG_ENABLE([ti-icdi],
   AS_HELP_STRING([--enable-ti-icdi], [Enable building support for the TI ICDI JTAG Programmer]),
   [build_hladapter_icdi=$enableval], [build_hladapter_icdi=no])
 
+AC_ARG_ENABLE([cmsis_dap],
+  AS_HELP_STRING([--enable-cmsis-dap], [Enable building support for CMSIS_DAP Programmer]),
+  [build_cmsisdap=$enableval], [build_cmsisdap=no])
+
 AC_ARG_ENABLE([osbdm],
   AS_HELP_STRING([--enable-osbdm], [Enable building support for the OSBDM (JTAG only) Programmer]),
   [build_osbdm=$enableval], [build_osbdm=no])
@@ -798,6 +802,12 @@ if test $build_hladapter_stlink = yes -o $build_hladapter_icdi = yes; then
   AC_DEFINE([BUILD_HLADAPTER], [1], [1 if you want the High Level JTAG driver.])
 else
   AC_DEFINE([BUILD_HLADAPTER], [0], [0 if you don't want the High Level JTAG driver.])
+fi
+
+if test $build_cmsisdap = yes; then
+  AC_DEFINE([BUILD_CMSISDAP], [1], [1 if you want the CMSIS-DAP driver.])
+else
+  AC_DEFINE([BUILD_CMSISDAP], [0], [0 if you don't want the CMSIS-DAP driver.])
 fi
 
 if test $build_osbdm = yes; then
@@ -1139,7 +1149,8 @@ fi
 # check for usb.h when a driver will require it
 build_usb=no
 if test $build_vsllink = yes -o $build_usbprog = yes -o \
-  $build_rlink = yes -o $build_ulink = yes -o $build_armjtagew = yes
+  $build_rlink = yes -o $build_ulink = yes -o $build_armjtagew = yes -o \
+  $build_cmsisdap = yes
 then
   build_usb=yes
 fi
@@ -1147,7 +1158,8 @@ fi
 # Check for libusb1 ported drivers.
 build_usb_ng=no
 if test $build_jlink = yes -o $build_hladapter_stlink = yes -o $build_osbdm = yes -o \
-  $build_opendous = yes -o $build_ftdi = yes -o $build_hladapter_icdi = yes
+  $build_opendous = yes -o $build_ftdi = yes -o $build_hladapter_icdi = yes \
+  $build_cmsisdap = yes
 then
   build_usb_ng=yes
 fi
@@ -1197,6 +1209,7 @@ AM_CONDITIONAL([ARMJTAGEW], [test $build_armjtagew = yes])
 AM_CONDITIONAL([REMOTE_BITBANG], [test $build_remote_bitbang = yes])
 AM_CONDITIONAL([BUSPIRATE], [test $build_buspirate = yes])
 AM_CONDITIONAL([HLADAPTER], [test $build_hladapter_stlink = yes -o $build_hladapter_icdi = yes])
+AM_CONDITIONAL([CMSIS_DAP], [test $build_cmsisdap = yes])
 AM_CONDITIONAL([OSBDM], [test $build_osbdm = yes])
 AM_CONDITIONAL([OPENDOUS], [test $build_opendous = yes])
 AM_CONDITIONAL([SYSFSGPIO], [test $build_sysfsgpio = yes])

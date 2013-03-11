@@ -164,7 +164,6 @@ int transport_register(struct transport *new_transport)
 	/* splice this into the list */
 	new_transport->next = transport_list;
 	transport_list = new_transport;
-	LOG_DEBUG("register '%s'", new_transport->name);
 
 	return ERROR_OK;
 }

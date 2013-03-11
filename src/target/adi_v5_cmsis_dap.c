@@ -58,17 +58,17 @@
 // YUK! - but this is currectly a global....
 extern struct jtag_interface *jtag_interface;
 
-static int swd_queue_dp_read(struct adiv5_dap *dap, unsigned reg,
+static int cmsis_dap_queue_dp_read(struct adiv5_dap *dap, unsigned reg,
 		uint32_t *data)
 {
 	/* REVISIT status return vs ack ... */
 	return jtag_interface->swd->read_reg(swd_cmd(true,  false, reg), data);
 }
 
-static int swd_queue_idcode_read(struct adiv5_dap *dap,
+static int cmsis_dap_queue_idcode_read(struct adiv5_dap *dap,
 		uint8_t *ack, uint32_t *data)
 {
-	int status = swd_queue_dp_read(dap, DP_IDCODE, data);
+	int status = cmsis_dap_queue_dp_read(dap, DP_IDCODE, data);
 	if (status < 0)
 		return status;
 	*ack = status;
@@ -76,7 +76,7 @@ static int swd_queue_idcode_read(struct adiv5_dap *dap,
 	return ERROR_OK;
 }
 
-static int (swd_queue_dp_write)(struct adiv5_dap *dap, unsigned reg,
+static int (cmsis_dap_queue_dp_write)(struct adiv5_dap *dap, unsigned reg,
 		uint32_t data)
 {
 	/* REVISIT status return vs ack ... */
@@ -84,7 +84,7 @@ static int (swd_queue_dp_write)(struct adiv5_dap *dap, unsigned reg,
 }
 
 
-static int (swd_queue_ap_read)(struct adiv5_dap *dap, unsigned reg,
+static int (cmsis_dap_queue_ap_read)(struct adiv5_dap *dap, unsigned reg,
 		uint32_t *data)
 {
 	/* REVISIT  APSEL ... */
@@ -92,7 +92,7 @@ static int (swd_queue_ap_read)(struct adiv5_dap *dap, unsigned reg,
 	return jtag_interface->swd->read_reg(swd_cmd(true,  true, reg), data);
 }
 
-static int (swd_queue_ap_write)(struct adiv5_dap *dap, unsigned reg,
+static int (cmsis_dap_queue_ap_write)(struct adiv5_dap *dap, unsigned reg,
 		uint32_t data)
 {
 	/* REVISIT  APSEL ... */
@@ -100,15 +100,15 @@ static int (swd_queue_ap_write)(struct adiv5_dap *dap, unsigned reg,
 	return jtag_interface->swd->write_reg(swd_cmd(false,  true, reg), data);
 }
 
-static int (swd_queue_ap_abort)(struct adiv5_dap *dap, uint8_t *ack)
+static int (cmsis_dap_queue_ap_abort)(struct adiv5_dap *dap, uint8_t *ack)
 {
 	return ERROR_FAIL;
 }
 
 /** Executes all queued DAP operations. */
-static int swd_run(struct adiv5_dap *dap)
+static int cmsis_dap_run(struct adiv5_dap *dap)
 {
-	/* for now the SWD interface hard-wires a zero-size queue.  */
+	/* for now the CMSIS-DAP interface hard-wires a zero-size queue.  */
 
 	/* FIXME but we still need to check and scrub
 	 * any hardware errors ...
@@ -116,16 +116,16 @@ static int swd_run(struct adiv5_dap *dap)
 	return ERROR_OK;
 }
 
-const struct dap_ops swd_dap_ops = {
-	.is_swd = true,
+const struct dap_ops cmsis_dap_ops = {
+	//.is_swd = true,
 
-	.queue_idcode_read = swd_queue_idcode_read,
-	.queue_dp_read = swd_queue_dp_read,
-	.queue_dp_write = swd_queue_dp_write,
-	.queue_ap_read = swd_queue_ap_read,
-	.queue_ap_write = swd_queue_ap_write,
-	.queue_ap_abort = swd_queue_ap_abort,
-	.run = swd_run,
+	.queue_idcode_read = cmsis_dap_queue_idcode_read,
+	.queue_dp_read = cmsis_dap_queue_dp_read,
+	.queue_dp_write = cmsis_dap_queue_dp_write,
+	.queue_ap_read = cmsis_dap_queue_ap_read,
+	.queue_ap_write = cmsis_dap_queue_ap_write,
+	.queue_ap_abort = cmsis_dap_queue_ap_abort,
+	.run = cmsis_dap_run,
 };
 
 /*
@@ -137,7 +137,7 @@ const struct dap_ops swd_dap_ops = {
  * about making the debug link select SWD or JTAG.  (Similar info
  * is in a few other ARM documents.)
  */
-static const uint8_t jtag2swd_bitseq[] = {
+static const uint8_t _XX_jtag2swd_bitseq[] = {
 	/* More than 50 TCK/SWCLK cycles with TMS/SWDIO high,
 	 * putting both JTAG and SWD logic into reset state.
 	 */
@@ -166,7 +166,7 @@ static const uint8_t jtag2swd_bitseq[] = {
  *
  * @return ERROR_OK or else a fault code.
  */
-int dap_to_swd(struct target *target)
+int _XX_dap_to_swd(struct target *target)
 {
 	struct arm *arm = target_to_arm(target);
 	int retval;
@@ -177,13 +177,13 @@ int dap_to_swd(struct target *target)
 	 * subsystem if the link may not be in JTAG mode...
 	 */
 
-	retval =  jtag_add_tms_seq(8 * sizeof(jtag2swd_bitseq),
-			jtag2swd_bitseq, TAP_INVALID);
+	retval =  jtag_add_tms_seq(8 * sizeof(_XX_jtag2swd_bitseq),
+			_XX_jtag2swd_bitseq, TAP_INVALID);
 	if (retval == ERROR_OK)
 		retval = jtag_execute_queue();
 
-	/* set up the DAP's ops vector for SWD mode. */
-	arm->dap->ops = &swd_dap_ops;
+	/* set up the DAP's ops vector */
+	arm->dap->ops = &cmsis_dap_ops;
 
 	return retval;
 }
@@ -202,7 +202,6 @@ COMMAND_HANDLER(handle_swd_wcr)
 	switch (CMD_ARGC) {
 	/* no-args: just dump state */
 	case 0:
-		/*retval = swd_queue_dp_read(dap, DP_WCR, &wcr); */
 		retval = dap_queue_dp_read(dap, DP_WCR, &wcr);
 		if (retval == ERROR_OK)
 			dap->ops->run(dap);
@@ -245,7 +244,7 @@ COMMAND_HANDLER(handle_swd_wcr)
 	}
 }
 
-static const struct command_registration swd_commands[] = {
+static const struct command_registration cmsis_dap_commands[] = {
 	{
 		/*
 		 * Set up SWD and JTAG targets identically, unless/until
@@ -257,7 +256,7 @@ static const struct command_registration swd_commands[] = {
 		.name = "newdap",
 		.jim_handler = jim_jtag_newtap,
 		.mode = COMMAND_CONFIG,
-		.help = "declare a new SWD DAP"
+		.help = "declare a new CMSIS-DAP"
 	},
 	{
 		.name = "wcr",
@@ -267,25 +266,24 @@ static const struct command_registration swd_commands[] = {
 		.usage = "turnaround (1..4), prescale (0..7)",
 	},
 
-	/* REVISIT -- add a command for SWV trace on/off */
 	COMMAND_REGISTRATION_DONE
 };
 
-static const struct command_registration swd_handlers[] = {
+static const struct command_registration cmsis_dap_handlers[] = {
 	{
-		.name = "swd",
+		.name = "cmsis-dap",
 		.mode = COMMAND_ANY,
-		.help = "SWD command group",
-		.chain = swd_commands,
+		.help = "cmsis_dap command group",
+		.chain = cmsis_dap_commands,
 	},
 	COMMAND_REGISTRATION_DONE
 };
 
-static int swd_select(struct command_context *ctx)
+static int cmsis_dap_select(struct command_context *ctx)
 {
 	int retval;
 
-	retval = register_commands(ctx, NULL, swd_handlers);
+	retval = register_commands(ctx, NULL, cmsis_dap_handlers);
 
 	if (retval != ERROR_OK)
 		return retval;
@@ -301,7 +299,7 @@ static int swd_select(struct command_context *ctx)
 
 	retval = swd->init(1);
 	if (retval != ERROR_OK) {
-		LOG_DEBUG("can't init SWD driver");
+		LOG_DEBUG("can't init CMSIS-DAP driver");
 		return retval;
 	}
 
@@ -309,13 +307,13 @@ static int swd_select(struct command_context *ctx)
   {
   	/* force DAP into SWD mode (not JTAG) */
   	struct target *target = get_current_target(ctx);
-  	retval = dap_to_swd(target);
+  	retval = _XX_dap_to_swd(target);
   }
   
 	return retval;
 }
 
-static int swd_init(struct command_context *ctx)
+static int cmsis_dap_init(struct command_context *ctx)
 {
 	struct target *target = get_current_target(ctx);
 	struct arm *arm = target_to_arm(target);
@@ -323,9 +321,9 @@ static int swd_init(struct command_context *ctx)
 	uint32_t idcode;
 	int status;
 
-	// Force the DAP's ops vector for SWD mode.
+	// Force the DAP's ops vector for CMSIS-DAP mode.
 	// messy - is there a better way?
-	arm->dap->ops = &swd_dap_ops;
+	arm->dap->ops = &cmsis_dap_ops;
 
 
 	/* FIXME validate transport config ... is the
@@ -339,32 +337,37 @@ static int swd_init(struct command_context *ctx)
 
 	uint8_t ack;
 
-	status = swd_queue_idcode_read(dap, &ack, &idcode);
+	status = cmsis_dap_queue_idcode_read(dap, &ack, &idcode);
 
 	if (status == ERROR_OK)
-		LOG_INFO("SWD IDCODE %#8.8x", idcode);
+		LOG_INFO("CMSIS-DAP IDCODE %#8.8x", idcode);
 
 
 	return status;
 
 }
 
-static struct transport swd_transport = {
-	.name = "swd",
-	.select = swd_select,
-	.init = swd_init,
+
+static struct transport cmsis_dap_transport = {
+	.name = "cmsis-dap",
+	.select = cmsis_dap_select,
+	.init = cmsis_dap_init,
 };
 
-static void swd_constructor(void) __attribute__((constructor));
-static void swd_constructor(void)
+static void cmsis_dap_constructor(void) __attribute__((constructor));
+static void cmsis_dap_constructor(void)
 {
-	transport_register(&swd_transport);
+	transport_register(&cmsis_dap_transport);
 }
 
+
+
 /** Returns true if the current debug session
- * is using SWD as its transport.
+ * is using CMSIS-DAP as its transport.
  */
-bool transport_is_swd(void)
+bool transport_is_cmsis_dap(void)
 {
-	return get_current_transport() == &swd_transport;
+	return get_current_transport() == &cmsis_dap_transport;
 }
+
+
