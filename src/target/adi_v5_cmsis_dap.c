@@ -91,7 +91,7 @@ static int cmsis_dap_queue_idcode_read(struct adiv5_dap *dap,
 static int (cmsis_dap_queue_dp_write)(struct adiv5_dap *dap, unsigned reg,
                                       uint32_t data)
 {
-  LOG_INFO("CMSIS-ADI: cmsis_dap_queue_dp_write");
+  LOG_INFO("CMSIS-ADI: cmsis_dap_queue_dp_write %d", reg);
   /* REVISIT status return vs ack ... */
   return jtag_interface->swd->write_reg( (CMSIS_CMD_DP|
                                           CMSIS_CMD_WRITE|
@@ -102,7 +102,7 @@ static int (cmsis_dap_queue_dp_write)(struct adiv5_dap *dap, unsigned reg,
 static int (cmsis_dap_queue_ap_read)(struct adiv5_dap *dap, unsigned reg,
                                       uint32_t *data)
 {
-  LOG_INFO("CMSIS-ADI: cmsis_dap_queue_ap_read");
+  LOG_INFO("CMSIS-ADI: cmsis_dap_queue_ap_read %d", reg);
   /* REVISIT  APSEL ... */
   /* REVISIT status return ... */
   return jtag_interface->swd->read_reg( (CMSIS_CMD_AP|
@@ -113,7 +113,7 @@ static int (cmsis_dap_queue_ap_read)(struct adiv5_dap *dap, unsigned reg,
 static int (cmsis_dap_queue_ap_write)(struct adiv5_dap *dap, unsigned reg,
                                       uint32_t data)
 {
-  LOG_INFO("CMSIS-ADI: cmsis_dap_queue_ap_write");
+  LOG_INFO("CMSIS-ADI: cmsis_dap_queue_ap_write %d", reg);
   /* REVISIT  APSEL ... */
   /* REVISIT status return ... */
   return jtag_interface->swd->write_reg( (CMSIS_CMD_AP|

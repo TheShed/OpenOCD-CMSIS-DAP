@@ -580,6 +580,7 @@ int mem_ap_read_buf_u32(struct adiv5_dap *dap, uint8_t *buffer,
 		if (retval != ERROR_OK)
 			return retval;
 
+#if 0
 		/* FIXME remove these three calls to adi_jtag_dp_scan(),
 		 * so this routine becomes transport-neutral.  Be careful
 		 * not to cause performance problems with JTAG; would it
@@ -612,7 +613,15 @@ int mem_ap_read_buf_u32(struct adiv5_dap *dap, uint8_t *buffer,
 				&dap->ack);
 		if (retval != ERROR_OK)
 			return retval;
+#endif
 
+    // FIXME: brain-dead cmsis-dap implementation
+    for (readcount = 0; readcount < blocksize ; readcount++)
+    {
+      dap_queue_ap_read(dap, AP_REG_DRW,
+                        (uint32_t *)(buffer + 4 * readcount));
+    }
+    
 		retval = dap_run(dap);
 		if (retval != ERROR_OK) {
 			errorcount++;
@@ -1117,6 +1126,7 @@ int ahbap_debugport_init(struct adiv5_dap *dap)
 
 	/* DP initialization */
 
+  dap_queue_dp_write(dap, DP_ABORT, 0x0000001E );
 	retval = dap_queue_dp_read(dap, DP_CTRL_STAT, NULL);
 	if (retval != ERROR_OK)
 		return retval;
@@ -1168,13 +1178,26 @@ int ahbap_debugport_init(struct adiv5_dap *dap)
 	if (retval != ERROR_OK)
 		return retval;
 	/* With debug power on we can activate OVERRUN checking */
-	dap->dp_ctrl_stat = CDBGPWRUPREQ | CSYSPWRUPREQ | CORUNDETECT;
-	retval = dap_queue_dp_write(dap, DP_CTRL_STAT, dap->dp_ctrl_stat);
-	if (retval != ERROR_OK)
-		return retval;
-	retval = dap_queue_dp_read(dap, DP_CTRL_STAT, NULL);
-	if (retval != ERROR_OK)
-		return retval;
+/*	dap->dp_ctrl_stat = CDBGPWRUPREQ | CSYSPWRUPREQ | CORUNDETECT;*/
+/*	retval = dap_queue_dp_write(dap, DP_CTRL_STAT, dap->dp_ctrl_stat);*/
+/*	if (retval != ERROR_OK)*/
+/*		return retval;*/
+/*	retval = dap_queue_dp_read(dap, DP_CTRL_STAT, NULL);*/
+/*	if (retval != ERROR_OK)*/
+/*		return retval;*/
+
+dap_queue_dp_write(dap, DP_SELECT, 0);
+dap_queue_ap_read(dap, AP_REG_CSW, &ctrlstat);
+dap_queue_ap_read(dap, AP_REG_TAR, &ctrlstat);
+//dap_queue_ap_read(dap, AP_REG_DRW, &ctrlstat);
+
+dap_queue_dp_write(dap, DP_SELECT, 0x000000F0 );
+dap_queue_ap_read(dap, AP_REG_CFG, &ctrlstat);
+dap_queue_ap_read(dap, AP_REG_BASE, &ctrlstat);
+dap_queue_ap_read(dap, AP_REG_IDR, &ctrlstat);
+dap_queue_dp_write(dap, DP_SELECT, 0x00000000 );
+
+
 
 	dap_syssec(dap);
 

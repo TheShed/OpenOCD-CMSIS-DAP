@@ -225,6 +225,15 @@ static int cmsis_dap_usb_xfer( struct cmsis_dap *dap, int len )
                                       dap->data, BUFFER_SIZE,
                                       &xfrd, USB_TIMEOUT );
 
+
+  for( int i=0; i<8; i++ )
+  {
+    uint8_t *buffer = dap->data;
+  
+    printf( "%02x (%c) ", buffer[i], buffer[i]>32?buffer[i]:'-' );
+  }
+  printf( "\n" );
+
   return result;
 }
 
@@ -304,6 +313,27 @@ static int cmsis_dap_cmd_DAP_Info( uint8_t info, uint8_t **data )
 }
 
 //======================================
+static int cmsis_dap_cmd_DAP_LED( uint8_t leds )
+{
+  int result;
+  uint8_t *buffer = cmsis_dap_handle->data;
+
+  LOG_INFO("CMSIS-DAP: cmsis_dap_cmd_DAP_LED");
+  buffer[0] = CMD_DAP_LED;
+  buffer[1] = 0x00;
+  buffer[2] = leds;
+  result = cmsis_dap_usb_xfer( cmsis_dap_handle, 3 );
+
+  if( result )
+  {
+    LOG_ERROR("CMSIS-DAP command CMD_LED failed (%d)", result);
+    return ERROR_JTAG_DEVICE_ERROR;
+  }
+
+  return ERROR_OK;
+}
+
+//======================================
 static int cmsis_dap_cmd_DAP_Connect( uint8_t mode )
 {
   int result;
@@ -327,6 +357,126 @@ static int cmsis_dap_cmd_DAP_Connect( uint8_t mode )
   }
 
   return ERROR_OK;
+}
+
+//======================================
+static int cmsis_dap_cmd_DAP_Disconnect( void )
+{
+  int result;
+  uint8_t *buffer = cmsis_dap_handle->data;
+
+  LOG_INFO("CMSIS-DAP: cmsis_dap_cmd_DAP_Disconnect");
+  buffer[0] = CMD_DAP_DISCONNECT;
+  result = cmsis_dap_usb_xfer( cmsis_dap_handle, 1 );
+
+  if( result || buffer[1] )
+  {
+    LOG_ERROR("CMSIS-DAP command CMD_DISCONNECT failed (%d)", result);
+    return ERROR_JTAG_DEVICE_ERROR;
+  }
+
+  return ERROR_OK;
+}
+
+//======================================
+static int cmsis_dap_cmd_DAP_TFER_Configure( uint8_t idle,
+                                             uint16_t wait,
+                                             uint16_t retry )
+{
+  int result;
+  uint8_t *buffer = cmsis_dap_handle->data;
+
+  LOG_INFO("CMSIS-DAP: cmsis_dap_cmd_TFER_Configure");
+  buffer[0] = CMD_DAP_TFER_CONFIGURE;
+  buffer[1] = idle;
+  buffer[2] = wait & 0xff;
+  buffer[3] = (wait>>8)&0xff;
+  buffer[4] = retry & 0xff;
+  buffer[5] = (retry>>8)&0xff;
+  result = cmsis_dap_usb_xfer( cmsis_dap_handle, 6 );
+
+  if( result || buffer[1] )
+  {
+    LOG_ERROR("CMSIS-DAP command CMD_TFER_Configure failed (%d)", result);
+    return ERROR_JTAG_DEVICE_ERROR;
+  }
+
+  return ERROR_OK;
+}
+
+
+
+
+//======================================
+static int cmsis_dap_cmd_DAP_SWD_Configure( uint8_t cfg )
+{
+  int result;
+  uint8_t *buffer = cmsis_dap_handle->data;
+
+  LOG_INFO("CMSIS-DAP: cmsis_dap_cmd_SWD_Configure");
+  buffer[0] = CMD_DAP_SWD_CONFIGURE;
+  buffer[1] = cfg;
+  result = cmsis_dap_usb_xfer( cmsis_dap_handle, 2 );
+
+  if( result || buffer[1] )
+  {
+    LOG_ERROR("CMSIS-DAP command CMD_SWD_Configure failed (%d)", result);
+    return ERROR_JTAG_DEVICE_ERROR;
+  }
+
+  return ERROR_OK;
+}
+
+
+//======================================
+static int cmsis_dap_swd_read_reg(uint8_t cmd, uint32_t *value)
+{
+  uint8_t *buffer = cmsis_dap_handle->data;
+  int result;
+  
+  LOG_INFO("CMSIS-DAP: SWD Read  Reg %02x",cmd);
+
+  buffer[0] = CMD_DAP_TFER;
+  buffer[1] = 0x00;
+  buffer[2] = 0x01;
+  buffer[3] = cmd;
+  result = cmsis_dap_usb_xfer( cmsis_dap_handle, 4 );
+
+  if( buffer[1] != 0x01 )
+  {
+    LOG_ERROR("CMSIS-DAP: SWD Read Error %02x",buffer[1]);
+    result = buffer[2];
+  }
+  
+  if( value )
+  {
+    *value = (buffer[3]     | buffer[4]<<8 |
+              buffer[5]<<16 | buffer[6]<<24 );
+    LOG_INFO("          Read: %08x",*value);
+  }
+
+  return result;
+}
+
+//======================================
+static int cmsis_dap_swd_write_reg(uint8_t cmd, uint32_t value)
+{
+  uint8_t *buffer = cmsis_dap_handle->data;
+  int result;
+
+  LOG_INFO("CMSIS-DAP: SWD Write Reg %02x %08x",cmd,value);
+
+  buffer[0] = CMD_DAP_TFER;
+  buffer[1] = 0x00;
+  buffer[2] = 0x01;
+  buffer[3] = cmd;
+  buffer[4] = (value    )&0xff;
+  buffer[5] = (value>> 8)&0xff;
+  buffer[6] = (value>>16)&0xff;
+  buffer[7] = (value>>24)&0xff;
+  result = cmsis_dap_usb_xfer( cmsis_dap_handle, 8 );
+
+  return result;
 }
 
 
@@ -401,7 +551,7 @@ static int cmsis_dap_reset_link( void )
 
   LOG_INFO("CMSIS-DAP: cmsis_dap_reset_link");
   
-  LOG_INFO("DAP_SWJ Sequence (reset: 50+ '1')" );
+  LOG_INFO("DAP_SWJ Sequence (reset: 50+ '1' followed by 0)" );
   buffer[0] = CMD_DAP_SWJ_SEQ;
   buffer[1] = 0x38;
   buffer[2] = 0xFF;
@@ -410,17 +560,24 @@ static int cmsis_dap_reset_link( void )
   buffer[5] = 0xFF;
   buffer[6] = 0xFF;
   buffer[7] = 0xFF;
-  buffer[9] = 0xFF;
-  result = cmsis_dap_usb_xfer( cmsis_dap_handle, 9 );
+  buffer[9] = 0x3F;
+  result = cmsis_dap_usb_xfer( cmsis_dap_handle, 10 );
 
-  if( !result )
-  {
-    LOG_INFO("DAP_SWJ Sequence (reset: 8 '0')" );
-    buffer[0] = CMD_DAP_SWJ_SEQ;
-    buffer[1] = 0x08;
-    buffer[2] = 0x00;
-    result = cmsis_dap_usb_xfer( cmsis_dap_handle, 3 );
-  }
+  if( result )
+    return result;
+    
+  LOG_INFO("DAP Read IDCODE" );
+  buffer[0] = 0x05;
+  buffer[1] = 0x00;
+  buffer[2] = 0x01;
+  buffer[3] = 0x02;
+  result = cmsis_dap_usb_xfer( cmsis_dap_handle, 4 );
+
+  if( result )
+    return result;
+
+  if( buffer[1] == 0 )
+    return 0x80 + buffer[2];
 
   return result;
 }
@@ -442,15 +599,32 @@ static int cmsis_dap_init( void )
     if( result != ERROR_OK )
       return result;
       
-    LOG_INFO("CMSIS-DAP: JTAG Interface Connected");
+    LOG_INFO("CMSIS-DAP: Interface Connected");
   }
 
-  cmsis_dap_get_status();
+  //cmsis_dap_get_status();
+  
+  for( int i=3; i; i-- )
+  {
+    cmsis_dap_cmd_DAP_SWJ_Clock( 100 );             // 100kHz
+    cmsis_dap_cmd_DAP_TFER_Configure( 0, 64, 0 );   // 
+//    cmsis_dap_cmd_DAP_SWD_Configure( 0x04 );        // 
+    cmsis_dap_cmd_DAP_SWD_Configure( 0x00 );        // 
+    cmsis_dap_cmd_DAP_LED( 0x03 );                  // Both LEDs on
 
-  cmsis_dap_reset_link();
+    if (cmsis_dap_reset_link() == ERROR_OK)
+      break;
+    
+    // failed to connect... have another go
+    cmsis_dap_cmd_DAP_LED( 0x00 );                  // Both LEDs off
+    cmsis_dap_cmd_DAP_Disconnect();
+    cmsis_dap_cmd_DAP_Connect( CONNECT_SWD );
+  }
 
+  // Init APSEL
+  cmsis_dap_swd_write_reg( 0x08, 0);
 
-  LOG_INFO("CMSIS-DAP: Interface ready");
+  LOG_INFO("CMSIS-DAP: Interface ready!!");
   return ERROR_OK;
 }
 
@@ -489,71 +663,13 @@ static int cmsis_dap_swd_init( uint8_t trn )
 }
 
 //======================================
-static int cmsis_dap_swd_read_reg(uint8_t cmd, uint32_t *value)
-{
-  uint8_t *buffer = cmsis_dap_handle->data;
-  int result;
-  
-  LOG_INFO("CMSIS-DAP: SWD Read  Reg %02x",cmd);
-
-  buffer[0] = CMD_DAP_TFER;
-  buffer[1] = 0x00;
-  buffer[2] = 0x01;
-  buffer[3] = cmd;
-  result = cmsis_dap_usb_xfer( cmsis_dap_handle, 4 );
-
-  for( int i=0; i<8; i++ )
-  {
-    printf( "%02x (%c) ", buffer[i], buffer[i]>32?buffer[i]:'-' );
-  }
-  printf( "\n" );
-
-  if( buffer[1] != 0x01 )
-    LOG_ERROR("CMSIS-DAP: SWD Read Error %02x",buffer[1]);
-  
-  if( value )
-  {
-    *value = (buffer[3]     | buffer[4]<<8 |
-              buffer[5]<<16 | buffer[6]<<24 );
-    LOG_INFO("          Read: %08x",*value);
-  }
-
-  return result;
-}
-
-//======================================
-static int cmsis_dap_swd_write_reg(uint8_t cmd, uint32_t value)
-{
-  uint8_t *buffer = cmsis_dap_handle->data;
-  int result;
-
-  LOG_INFO("CMSIS-DAP: SWD Write Reg %02x %08x",cmd,value);
-
-  buffer[0] = CMD_DAP_TFER;
-  buffer[1] = 0x00;
-  buffer[2] = 0x01;
-  buffer[3] = cmd;
-  buffer[4] = (value    )&0xff;
-  buffer[5] = (value>> 8)&0xff;
-  buffer[6] = (value>>16)&0xff;
-  buffer[7] = (value>>24)&0xff;
-  result = cmsis_dap_usb_xfer( cmsis_dap_handle, 8 );
-
-  for( int i=0; i<8; i++ )
-  {
-    printf( "%02x (%c) ", buffer[i], buffer[i]>32?buffer[i]:'-' );
-  }
-  printf( "\n" );
-
-  return result;
-}
-
-//======================================
 static int cmsis_dap_quit( void )
 {
 
   LOG_INFO("CMSIS-DAP: cmsis_dap_quit");
-  // Disconnect here....
+
+  cmsis_dap_cmd_DAP_Disconnect();
+  cmsis_dap_cmd_DAP_LED( 0x00 );                  // Both LEDs off
 
   cmsis_dap_usb_close( cmsis_dap_handle );
 
@@ -622,6 +738,7 @@ static const struct command_registration cmsis_dap_subcommand_handlers[] =
     .name = "info",
     .handler = &cmsis_dap_handle_info_command,
     .mode = COMMAND_EXEC,
+    .usage = "cmsis-dap info",
     .help = "show cmsis-dap info",
   },
 //  {
@@ -642,6 +759,7 @@ static const struct command_registration cmsis_dap_command_handlers[] =
     .name = "cmsis-dap",
     .mode = COMMAND_ANY,
     .help = "perform CMSIS-DAP management",
+    .usage = "cmsis-dap <cmd>",
     .chain = cmsis_dap_subcommand_handlers,
   },
   COMMAND_REGISTRATION_DONE
