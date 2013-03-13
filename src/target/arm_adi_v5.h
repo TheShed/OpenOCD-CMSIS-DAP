@@ -217,6 +217,10 @@ struct dap_ops {
 	int (*queue_ap_write)(struct adiv5_dap *dap, unsigned reg,
 			uint32_t data);
 
+	/** AP read block. */
+	int (*queue_ap_read_block)(struct adiv5_dap *dap, uint32_t blocksize,
+			uint8_t *buffer);
+
 	/** AP operation abort. */
 	int (*queue_ap_abort)(struct adiv5_dap *dap, uint8_t *ack);
 
@@ -311,6 +315,26 @@ static inline int dap_queue_ap_write(struct adiv5_dap *dap,
 	assert(dap->ops != NULL);
 	return dap->ops->queue_ap_write(dap, reg, data);
 }
+
+
+
+/**
+ * Queue an AP block read.
+ *
+ * @param dap The DAP used for reading.
+ * @param count The number of the AP register being read.
+ * @param buffer Pointer saying where to store the data 
+ * (in host endianness).
+ *
+ * @return ERROR_OK for success, else a fault code.
+ */
+static inline int dap_queue_ap_read_block(struct adiv5_dap *dap,
+		unsigned blocksize, uint8_t *buffer)
+{
+	assert(dap->ops != NULL);
+	return dap->ops->queue_ap_read_block(dap, blocksize, buffer);
+}
+
 
 /**
  * Queue an AP abort operation.  The current AP transaction is aborted,

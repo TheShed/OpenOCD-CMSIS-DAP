@@ -139,6 +139,7 @@ static char *info_caps_str[] = {
 struct cmsis_dap
 {
   struct jtag_libusb_device_handle *dev_handle;
+  uint16_t packet_size;
   uint8_t data[BUFFER_SIZE];
   uint8_t caps;
   uint8_t mode;
@@ -464,7 +465,7 @@ static int cmsis_dap_swd_write_reg(uint8_t cmd, uint32_t value)
   uint8_t *buffer = cmsis_dap_handle->data;
   int result;
 
-  LOG_INFO("CMSIS-DAP: SWD Write Reg %02x %08x",cmd,value);
+  LOG_INFO("CMSIS-DAP: Write Reg %02x %08x",cmd,value);
 
   buffer[0] = CMD_DAP_TFER;
   buffer[1] = 0x00;
@@ -475,6 +476,47 @@ static int cmsis_dap_swd_write_reg(uint8_t cmd, uint32_t value)
   buffer[6] = (value>>16)&0xff;
   buffer[7] = (value>>24)&0xff;
   result = cmsis_dap_usb_xfer( cmsis_dap_handle, 8 );
+
+  if( buffer[1] != 0x01 )
+  {
+    LOG_ERROR("CMSIS-DAP: Write Error %02x",buffer[1]);
+    result = buffer[2];
+  }
+  
+  return result;
+}
+
+//======================================
+static int cmsis_dap_swd_read_block(uint8_t cmd, uint32_t blocksize,
+                                      uint32_t *dest_buf)
+{
+  uint8_t *buffer = cmsis_dap_handle->data;
+  int result;
+  uint16_t read_count;
+  
+  LOG_INFO("CMSIS-DAP: Read Block %02x %d",cmd, blocksize);
+
+  buffer[0] = CMD_DAP_TFER_BLOCK;
+  buffer[1] = 0x00;
+  buffer[2] = blocksize & 0xff;
+  buffer[3] = (blocksize>>8) & 0xff;
+  buffer[4] = cmd;
+  result = cmsis_dap_usb_xfer( cmsis_dap_handle, 5 );
+
+  read_count = buffer[1] + (buffer[2]<<8);
+  if( read_count != blocksize )
+  {
+    LOG_ERROR("CMSIS-DAP: Read Error %02x",buffer[1]);
+    result = buffer[3];
+  }
+  
+  buffer = &(buffer[4]);
+  while( read_count-- )
+  {
+    *dest_buf++ = (buffer[0]     | buffer[1]<<8 |
+              buffer[2]<<16 | buffer[3]<<24 );
+    buffer += 4;
+  }
 
   return result;
 }
@@ -493,32 +535,41 @@ static int cmsis_dap_get_version_info( void )
   result = cmsis_dap_cmd_DAP_Info( INFO_ID_FW_VER, &data );
   if( result )
     return result;
+    
   if( data[0] ) // strlen
     LOG_INFO( "CMSIS-DAP: FW Version = %s", &data[1] );
 
+  return ERROR_OK;
+}
+
+
+//======================================
+static int cmsis_dap_get_caps_info( void )
+{
+  int result;
+  uint8_t *data;
+
+  LOG_INFO("CMSIS-DAP: cmsis_dap_get_caps_info");
   // INFO_ID_CAPS - byte
   result = cmsis_dap_cmd_DAP_Info( INFO_ID_CAPS, &data );
   if( result )
     return result;
+    
   if( data[0] == 1 )
   {
     uint8_t caps = data[1];
+    
     cmsis_dap_handle->caps = caps;
+    
     if( caps & INFO_CAPS_SWD )
       LOG_INFO( "CMSIS-DAP: %s", info_caps_str[0] );
     if( caps & INFO_CAPS_JTAG )
       LOG_INFO( "CMSIS-DAP: %s", info_caps_str[1] );
   }
   
-  // INFO_ID_PKT_SZ - short
-  result = cmsis_dap_cmd_DAP_Info( INFO_ID_PKT_SZ, &data );
-  if( result )
-    return result;
-  if( data[0] == 2 ) // short
-    LOG_INFO( "CMSIS-DAP: Packet Size = %d", data[1] + (data[2]<<8) );
-
   return ERROR_OK;
 }
+
 
 //======================================
 static int cmsis_dap_get_status( void )
@@ -586,6 +637,7 @@ static int cmsis_dap_reset_link( void )
 static int cmsis_dap_init( void )
 {
   int result;
+  uint8_t *data;
   
   LOG_INFO("CMSIS-DAP: cmsis_dap_init");
   if( cmsis_dap_handle == NULL )
@@ -595,15 +647,45 @@ static int cmsis_dap_init( void )
     if( result != ERROR_OK )
       return result;
 
-    result = cmsis_dap_get_version_info();
+    result = cmsis_dap_get_caps_info();
     if( result != ERROR_OK )
       return result;
       
-    LOG_INFO("CMSIS-DAP: Interface Connected");
+    // Connect in JTAG mode
+    if( !(cmsis_dap_handle->caps & INFO_CAPS_JTAG) )
+    {
+      LOG_ERROR("CMSIS-DAP: JTAG not supported");
+      return ERROR_JTAG_DEVICE_ERROR;
+    }
+    
+    result = cmsis_dap_cmd_DAP_Connect( CONNECT_JTAG );
+    if( result != ERROR_OK )
+      return result;
+
+    LOG_INFO("CMSIS-DAP: Interface Initialised (JTAG)");
   }
 
-  //cmsis_dap_get_status();
-  
+  result = cmsis_dap_get_version_info();
+  if( result != ERROR_OK )
+    return result;
+      
+
+  // INFO_ID_PKT_SZ - short
+  result = cmsis_dap_cmd_DAP_Info( INFO_ID_PKT_SZ, &data );
+  if( result )
+    return result;
+
+  if( data[0] == 2 ) // short
+  {
+    uint16_t pkt_sz = data[1] + (data[2]<<8);
+    cmsis_dap_handle->packet_size = pkt_sz;
+    LOG_INFO( "CMSIS-DAP: Packet Size = %d", pkt_sz );
+  }
+
+  cmsis_dap_get_status();
+
+  // Now try to connect to the target
+  // FIXME: This is all SWD only @ present
   for( int i=3; i; i-- )
   {
     cmsis_dap_cmd_DAP_SWJ_Clock( 100 );             // 100kHz
@@ -612,7 +694,7 @@ static int cmsis_dap_init( void )
     cmsis_dap_cmd_DAP_SWD_Configure( 0x00 );        // 
     cmsis_dap_cmd_DAP_LED( 0x03 );                  // Both LEDs on
 
-    if (cmsis_dap_reset_link() == ERROR_OK)
+    if (cmsis_dap_reset_link(/*mode*/) == ERROR_OK)
       break;
     
     // failed to connect... have another go
@@ -621,7 +703,7 @@ static int cmsis_dap_init( void )
     cmsis_dap_cmd_DAP_Connect( CONNECT_SWD );
   }
 
-  // Init APSEL
+  // FIXME: Init DP_SELECT.APSEL
   cmsis_dap_swd_write_reg( 0x08, 0);
 
   LOG_INFO("CMSIS-DAP: Interface ready!!");
@@ -641,7 +723,7 @@ static int cmsis_dap_swd_init( uint8_t trn )
     if( result != ERROR_OK )
       return result;
 
-    result = cmsis_dap_get_version_info();
+    result = cmsis_dap_get_caps_info();
     if( result != ERROR_OK )
       return result;
   }
@@ -656,9 +738,9 @@ static int cmsis_dap_swd_init( uint8_t trn )
   if( result != ERROR_OK )
     return result;
   
-  // Add more setup here....
+  // Add more setup here.??...
   
-  LOG_INFO("CMSIS-DAP: SWD Interface Connected");
+  LOG_INFO("CMSIS-DAP: Interface Initialised (SWD)");
   return ERROR_OK;
 }
 
@@ -768,9 +850,10 @@ static const struct command_registration cmsis_dap_command_handlers[] =
 //======================================
 struct swd_driver cmsis_dap_swd_driver = 
 {
-  .init = cmsis_dap_swd_init,
-  .read_reg = cmsis_dap_swd_read_reg,
-  .write_reg = cmsis_dap_swd_write_reg,
+  .init       = cmsis_dap_swd_init,
+  .read_reg   = cmsis_dap_swd_read_reg,
+  .write_reg  = cmsis_dap_swd_write_reg,
+  .read_block = cmsis_dap_swd_read_block
   //.trace,
 };
 

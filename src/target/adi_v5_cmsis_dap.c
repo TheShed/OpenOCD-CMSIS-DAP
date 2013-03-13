@@ -121,6 +121,22 @@ static int (cmsis_dap_queue_ap_write)(struct adiv5_dap *dap, unsigned reg,
                                           CMSIS_CMD_A32(reg)), data);
 }
 
+
+
+static int (cmsis_dap_queue_ap_read_block)(struct adiv5_dap *dap,
+                                      uint32_t blocksize,
+                                      uint8_t *buffer)
+{
+  LOG_INFO("CMSIS-ADI: cmsis_dap_queue_ap_read_block %d", blocksize);
+  /* REVISIT  APSEL ... */
+  /* REVISIT status return ... */
+  return jtag_interface->swd->read_block( (CMSIS_CMD_AP|
+                                          CMSIS_CMD_READ|
+                                          CMSIS_CMD_A32(AP_REG_DRW)),
+                                          blocksize, (uint32_t *)buffer);
+}
+
+
 static int (cmsis_dap_queue_ap_abort)(struct adiv5_dap *dap, uint8_t *ack)
 {
   LOG_INFO("CMSIS-ADI: cmsis_dap_queue_ap_abort");
@@ -141,13 +157,13 @@ static int cmsis_dap_run(struct adiv5_dap *dap)
 
 const struct dap_ops cmsis_dap_ops = {
   //.is_swd = true,
-
-  .queue_idcode_read = cmsis_dap_queue_idcode_read,
-  .queue_dp_read = cmsis_dap_queue_dp_read,
-  .queue_dp_write = cmsis_dap_queue_dp_write,
-  .queue_ap_read = cmsis_dap_queue_ap_read,
-  .queue_ap_write = cmsis_dap_queue_ap_write,
-  .queue_ap_abort = cmsis_dap_queue_ap_abort,
+  .queue_idcode_read   = cmsis_dap_queue_idcode_read,
+  .queue_dp_read       = cmsis_dap_queue_dp_read,
+  .queue_dp_write      = cmsis_dap_queue_dp_write,
+  .queue_ap_read       = cmsis_dap_queue_ap_read,
+  .queue_ap_write      = cmsis_dap_queue_ap_write,
+	.queue_ap_read_block = cmsis_dap_queue_ap_read_block,
+  .queue_ap_abort      = cmsis_dap_queue_ap_abort,
   .run = cmsis_dap_run,
 };
 
@@ -251,8 +267,10 @@ static int cmsis_dap_select(struct command_context *ctx)
   if (retval != ERROR_OK)
     return retval;
 
+  // FIXME: This needs a real overhaul!! FIXME
    /* be sure driver is in SWD mode; start
     * with hardware default TRN (1), it can be changed later
+    we use a bogus 'swd' driver to implement cmsis-dap as it is quite similar
     */
   const struct swd_driver *swd = jtag_interface->swd;  
   if (!swd || !swd->read_reg || !swd->write_reg || !swd->init) {
