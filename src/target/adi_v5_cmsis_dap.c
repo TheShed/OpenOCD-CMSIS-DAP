@@ -1,6 +1,7 @@
 /***************************************************************************
  *
- *   Copyright (C) 2010 by David Brownell
+ *   Copyright (C) 2013 by mike brown
+ *   mike@theshedworks.org.uk
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -20,25 +21,11 @@
 
 /**
  * @file
- * Utilities to support ARM "Serial Wire Debug" (SWD), a low pin-count debug
- * link protocol used in cases where JTAG is not wanted.  This is coupled to
- * recent versions of ARM's "CoreSight" debug framework.  This specific code
- * is a transport level interface, with "target/arm_adi_v5.[hc]" code
- * understanding operation semantics, shared with the JTAG transport.
- *
- * Single-DAP support only.
- *
- * for details, see "ARM IHI 0031A"
- * ARM Debug Interface v5 Architecture Specification
- * especially section 5.3 for SWD protocol
- *
- * On many chips (most current Cortex-M3 parts) SWD is a run-time alternative
- * to JTAG.  Boards may support one or both.  There are also SWD-only chips,
- * (using SW-DP not SWJ-DP).
- *
- * Even boards that also support JTAG can benefit from SWD support, because
- * usually there's no way to access the SWO trace view mechanism in JTAG mode.
- * That is, trace access may require SWD support.
+ * Utilities to support ARM "CMSIS-DAP", The CoreSight Debug Access Port. 
+ * This is coupled to recent versions of ARM's "CoreSight" debug framework.
+ * This specific code is a transport level interface, with 
+ * "target/arm_adi_v5.[hc]" code understanding operation semantics,
+ * shared with the SWD & JTAG transports.
  *
  */
 
@@ -67,14 +54,39 @@
 // YUK! - but this is currectly a global....
 extern struct jtag_interface *jtag_interface;
 
+
+static int (cmsis_dap_queue_ap_abort)(struct adiv5_dap *dap, uint8_t *ack)
+{
+  LOG_INFO("CMSIS-ADI: cmsis_dap_queue_ap_abort");
+  // FIXME: implement this properly
+  // cmsis-dap has DAP_WriteABORT()
+  // for now just hack @ everything
+  return jtag_interface->swd->write_reg( (CMSIS_CMD_DP|
+                                          CMSIS_CMD_WRITE|
+                                          CMSIS_CMD_A32( DP_ABORT)), 0x1e);
+}
+
+
+
+
 static int cmsis_dap_queue_dp_read(struct adiv5_dap *dap, unsigned reg,
                                     uint32_t *data)
 {
-  LOG_INFO("CMSIS-ADI: cmsis_dap_queue_dp_read %d", reg );
-  /* REVISIT status return vs ack ... */
-  return jtag_interface->swd->read_reg( (CMSIS_CMD_DP|
-                                          CMSIS_CMD_READ|
-                                          CMSIS_CMD_A32(reg)), data);
+  int ret;
+  
+  LOG_INFO("CMSIS-ADI: cmsis_dap_queue_dp_read %02x", reg );
+  ret = jtag_interface->swd->read_reg( (CMSIS_CMD_DP|
+                                        CMSIS_CMD_READ|
+                                        CMSIS_CMD_A32(reg)), data);
+
+  if( ret > 0 )
+  {
+    //fault response
+    uint8_t ack = ret &0xff;
+    cmsis_dap_queue_ap_abort( dap, &ack);
+  }
+  
+  return ret;
 }
 
 static int cmsis_dap_queue_idcode_read(struct adiv5_dap *dap,
@@ -91,34 +103,86 @@ static int cmsis_dap_queue_idcode_read(struct adiv5_dap *dap,
 static int (cmsis_dap_queue_dp_write)(struct adiv5_dap *dap, unsigned reg,
                                       uint32_t data)
 {
-  LOG_INFO("CMSIS-ADI: cmsis_dap_queue_dp_write %d", reg);
-  /* REVISIT status return vs ack ... */
-  return jtag_interface->swd->write_reg( (CMSIS_CMD_DP|
-                                          CMSIS_CMD_WRITE|
-                                          CMSIS_CMD_A32(reg)), data);
+  int ret;
+  
+  LOG_INFO("CMSIS-ADI: cmsis_dap_queue_dp_write %02x %08x", reg, data);
+  ret = jtag_interface->swd->write_reg( (CMSIS_CMD_DP|
+                                         CMSIS_CMD_WRITE|
+                                         CMSIS_CMD_A32(reg)), data);
+
+  if( ret > 0 )
+  {
+    //fault response
+    uint8_t ack = ret &0xff;
+    cmsis_dap_queue_ap_abort( dap, &ack);
+  }
+  
+  return ret;
 }
+
+
+/** Select the AP register bank matching bits 7:4 of reg. */
+static int cmsis_dap_ap_q_bankselect(struct adiv5_dap *dap, unsigned reg)
+{
+  uint32_t select_ap_bank = reg & 0x000000F0;
+
+  if (select_ap_bank == dap->ap_bank_value)
+    return ERROR_OK;
+  dap->ap_bank_value = select_ap_bank;
+
+  select_ap_bank |= dap->ap_current;
+
+  return cmsis_dap_queue_dp_write(dap, DP_SELECT, select_ap_bank);
+}
+
 
 
 static int (cmsis_dap_queue_ap_read)(struct adiv5_dap *dap, unsigned reg,
                                       uint32_t *data)
 {
-  LOG_INFO("CMSIS-ADI: cmsis_dap_queue_ap_read %d", reg);
-  /* REVISIT  APSEL ... */
-  /* REVISIT status return ... */
-  return jtag_interface->swd->read_reg( (CMSIS_CMD_AP|
-                                          CMSIS_CMD_READ|
-                                          CMSIS_CMD_A32(reg)), data);
+  int ret;
+  
+  LOG_INFO("CMSIS-ADI: cmsis_dap_queue_ap_read %02x", reg);
+  int retval = cmsis_dap_ap_q_bankselect(dap, reg);
+  if (retval != ERROR_OK)
+    return retval;
+
+  ret = jtag_interface->swd->read_reg( (CMSIS_CMD_AP|
+                                        CMSIS_CMD_READ|
+                                        CMSIS_CMD_A32(reg)), data);
+
+  if( ret > 0 )
+  {
+    //fault response
+    uint8_t ack = ret &0xff;
+    cmsis_dap_queue_ap_abort( dap, &ack);
+  }
+  
+  return ret;
 }
 
 static int (cmsis_dap_queue_ap_write)(struct adiv5_dap *dap, unsigned reg,
                                       uint32_t data)
 {
-  LOG_INFO("CMSIS-ADI: cmsis_dap_queue_ap_write %d", reg);
-  /* REVISIT  APSEL ... */
-  /* REVISIT status return ... */
-  return jtag_interface->swd->write_reg( (CMSIS_CMD_AP|
-                                          CMSIS_CMD_WRITE|
-                                          CMSIS_CMD_A32(reg)), data);
+  int ret;
+  
+  LOG_INFO("CMSIS-ADI: cmsis_dap_queue_ap_write %02x %08x", reg, data);
+  int retval = cmsis_dap_ap_q_bankselect(dap, reg);
+  if (retval != ERROR_OK)
+    return retval;
+
+  ret = jtag_interface->swd->write_reg( (CMSIS_CMD_AP|
+                                         CMSIS_CMD_WRITE|
+                                         CMSIS_CMD_A32(reg)), data);
+
+  if( ret > 0 )
+  {
+    //fault response
+    uint8_t ack = ret &0xff;
+    cmsis_dap_queue_ap_abort( dap, &ack);
+  }
+  
+  return ret;
 }
 
 
@@ -127,31 +191,32 @@ static int (cmsis_dap_queue_ap_read_block)(struct adiv5_dap *dap,
                                       uint32_t blocksize,
                                       uint8_t *buffer)
 {
-  LOG_INFO("CMSIS-ADI: cmsis_dap_queue_ap_read_block %d", blocksize);
-  /* REVISIT  APSEL ... */
-  /* REVISIT status return ... */
-  return jtag_interface->swd->read_block( (CMSIS_CMD_AP|
+  int ret;
+  
+  LOG_INFO("CMSIS-ADI: cmsis_dap_queue_ap_read_block %02x", blocksize);
+  ret = jtag_interface->swd->read_block( (CMSIS_CMD_AP|
                                           CMSIS_CMD_READ|
                                           CMSIS_CMD_A32(AP_REG_DRW)),
                                           blocksize, (uint32_t *)buffer);
+
+  if( ret > 0 )
+  {
+    //fault response
+    uint8_t ack = ret &0xff;
+    cmsis_dap_queue_ap_abort( dap, &ack);
+  }
+  
+  return ret;
 }
 
-
-static int (cmsis_dap_queue_ap_abort)(struct adiv5_dap *dap, uint8_t *ack)
-{
-  LOG_INFO("CMSIS-ADI: cmsis_dap_queue_ap_abort");
-  return ERROR_FAIL;
-}
 
 /** Executes all queued DAP operations. */
 static int cmsis_dap_run(struct adiv5_dap *dap)
 {
   LOG_INFO("CMSIS-ADI: cmsis_dap_run");
-  /* for now the CMSIS-DAP interface hard-wires a zero-size queue.  */
+  /* FIXME: for now the CMSIS-DAP interface hard-wires a zero-size queue.  */
 
-  /* FIXME but we still need to check and scrub
-   * any hardware errors ...
-   */
+   
   return ERROR_OK;
 }
 
@@ -300,7 +365,7 @@ static int cmsis_dap_init(struct command_context *ctx)
   uint32_t idcode;
   int status;
 
-  LOG_INFO("CMSIS-ADI: cmsis_dap_init !!");
+  LOG_INFO("CMSIS-ADI: cmsis_dap_init");
   // Force the DAP's ops vector for CMSIS-DAP mode.
   // messy - is there a better way?
   arm->dap->ops = &cmsis_dap_ops;
@@ -320,8 +385,10 @@ static int cmsis_dap_init(struct command_context *ctx)
   status = cmsis_dap_queue_idcode_read(dap, &ack, &idcode);
 
   if (status == ERROR_OK)
-    LOG_INFO("CMSIS-DAP IDCODE %#8.8x", idcode);
+    LOG_INFO("IDCODE %#8.8x", idcode);
 
+  // force clear all sticky faults
+  cmsis_dap_queue_ap_abort( dap, &ack );
 
   return status;
 

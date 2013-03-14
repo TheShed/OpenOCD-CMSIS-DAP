@@ -10,6 +10,9 @@
  *                                                                         *
  *   Copyright (C) 2009-2010 by David Brownell                             *
  *                                                                         *
+ *   Copyright (C) 2013 by mike brown                                      *
+ *   mike@theshedworks.org.uk                                              *
+ *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU General Public License as published by  *
  *   the Free Software Foundation; either version 2 of the License, or     *
@@ -552,8 +555,6 @@ int mem_ap_read_buf_u32(struct adiv5_dap *dap, uint8_t *buffer,
 	count >>= 2;
 	wcount = count;
 
-	LOG_INFO("mem_ap_read_buf_u32 - JTAG!! " );
-
 	while (wcount > 0) {
 		/* Adjust to read blocks within boundaries aligned to the
 		 * TAR autoincrement size (at least 2^10).  Autoincrement
@@ -1066,6 +1067,7 @@ int ahbap_debugport_init(struct adiv5_dap *dap)
 	/* JTAG-DP or SWJ-DP, in JTAG mode
 	 * ... for SWD mode this is patched as part
 	 * of link switchover
+	 * ... for CMSIS_DAP this is also patched 
 	 */
 	if (!dap->ops)
 		dap->ops = &jtag_dp_ops;
@@ -1075,17 +1077,20 @@ int ahbap_debugport_init(struct adiv5_dap *dap)
 	 * REVISIT AP #0 may be an inappropriate default for this.
 	 * Should we probe, or take a hint from the caller?
 	 * Presumably we can ignore the possibility of multiple APs.
+	 *
+	 * err - No! kl25 (and probably other Freescale devices)
+	 * has a second AP.
 	 */
 	dap->ap_current = !0;
 	dap_ap_select(dap, 0);
 
 	/* DP initialization */
 
-  dap_queue_dp_write(dap, DP_ABORT, 0x0000001E );
 	retval = dap_queue_dp_read(dap, DP_CTRL_STAT, NULL);
 	if (retval != ERROR_OK)
 		return retval;
 
+  //FIXME: This is JTAG specific - doesn't do any harm though..
 	retval = dap_queue_dp_write(dap, DP_CTRL_STAT, SSTICKYERR);
 	if (retval != ERROR_OK)
 		return retval;
@@ -1200,6 +1205,8 @@ int dap_get_debugbase(struct adiv5_dap *dap, int ap,
 	if (retval != ERROR_OK)
 		return retval;
 
+#if 0
+// FIXME: Shouldn't delve down to tap, but probaly should check something....
 	/* Excavate the device ID code */
 	struct jtag_tap *tap = dap->jtag_info->tap;
 	while (tap != NULL) {
@@ -1209,6 +1216,7 @@ int dap_get_debugbase(struct adiv5_dap *dap, int ap,
 	}
 	if (tap == NULL || !tap->hasidcode)
 		return ERROR_OK;
+#endif
 
 	dap_ap_select(dap, ap_old);
 
@@ -1449,6 +1457,9 @@ static int dap_info_command(struct command_context *cmd_ctx,
 						case 2:
 							subtype = "Buffer";
 							break;
+						case 3:
+							subtype = "Basic Trace Router";
+							break;
 						}
 						break;
 					case 2:
@@ -1627,6 +1638,10 @@ static int dap_info_command(struct command_context *cmd_ctx,
 				case 0x930:
 					type = "Cortex-R4 ETM";
 					full = "(Embedded Trace)";
+					break;
+				case 0x932:
+					type = "Cortex-M0+ MTB";
+					full = "(Micro Trace Buffer)";
 					break;
 				case 0x9a1:
 					type = "Cortex-M4 TPUI";
