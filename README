@@ -30,7 +30,7 @@ Building
 All development up to now has been done on a 64-bit Linux (Debian Wheezy)
 machine using the following configuration:
 
-  './configure --enable-maintainer-mode './configure --enable-maintainer-mode'
+  './configure --enable-maintainer-mode --enable-cmsis-dap'
 
 
 =======
