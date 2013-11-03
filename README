@@ -1,6 +1,15 @@
 Welcome to OpenOCD - CMSIS-DAP
 ==============================
 
+** This repository is no longer maintained. **
+
+CSIS-DAP support is now a pending change to mainline OpenOCD
+(http://openocd.zylin.com/1542) 
+
+
+==============================
+==============================
+
 This is a very hacked about version of OpenOCD to support the
 ARM CMSIS-DAP interface. 
 Very ALPHA at the moment. Feel free to try it out and let me know
